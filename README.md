@@ -37,6 +37,28 @@ Welcome to **kdash**, a mini tool to pretty display your Kubernetes Context enti
     ./kdash
 ```
 
+## Build Electron app
+#### prerequisites
+```
+- Node.js (v14.0.0 or later)
+- npm (v6.0.0 or later)
+- Git
+```
+
+
+#### steps:
+1. after cloning cd to electron_base
+2. run `npm install`
+3. run `npm start` - For dev mode
+4. run `npm run dist` - To build distribuition for prod ready - macos base dmg
+```
+    This will create a `.dmg` file in the `dist` folder.
+    For other platforms, you can specify the platform:
+    npm run dist -- --mac
+    npm run dist -- --win
+    npm run dist -- --linux
+```
+
 ## 🚀 Usage
 
 #### To use **kdash**, follow these steps:

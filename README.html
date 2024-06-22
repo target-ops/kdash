@@ -248,6 +248,23 @@ h3 {
 <li>Run the executable:</li>
 </ol>
 <pre><code class="hljs">    ./kdash</code></pre>
+<h2 id="build-electron-app">Build Electron app</h2>
+<h4 id="prerequisites">prerequisites</h4>
+<pre><code class="hljs">- Node.js (v14.0.0<span class="hljs-built_in"> or </span>later)
+- npm (v6.0.0<span class="hljs-built_in"> or </span>later)
+- Git</code></pre>
+<h4 id="steps">steps:</h4>
+<ol>
+<li>after cloning cd to electron_base</li>
+<li>run <code>npm install</code></li>
+<li>run <code>npm start</code> - For dev mode</li>
+<li>run <code>npm run dist</code> - To build distribuition for prod ready - macos base dmg</li>
+</ol>
+<pre><code class="hljs">    This will <span class="hljs-built_in">create</span> <span class="hljs-keyword">a</span> `.dmg` <span class="hljs-built_in">file</span> <span class="hljs-keyword">in</span> <span class="hljs-keyword">the</span> `dist` <span class="hljs-built_in">folder</span>.
+    For other platforms, you can specify <span class="hljs-keyword">the</span> <span class="hljs-built_in">platform</span>:
+    npm run dist <span class="hljs-comment">-- --mac</span>
+    npm run dist <span class="hljs-comment">-- --win</span>
+    npm run dist <span class="hljs-comment">-- --linux</span></code></pre>
 <h2 id="🚀-usage">🚀 Usage</h2>
 <h4 id="to-use-kdash-follow-these-steps">To use <strong>kdash</strong>, follow these steps:</h4>
 <p>Run the executable from path in installation step:</p>
