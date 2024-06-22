@@ -74,10 +74,16 @@
     </style>
 </head>
 <body>
+    <h5><a href="https://target-ops.is-cool.dev/">Target-ops </a>developed tool</h5>
+    <a href="https://target-ops.is-cool.dev/"><img src="https://avatars.githubusercontent.com/u/171186748?s=200&v=4"alt="Target-ops logo" style="width: 50px; height: auto;"></a>
     <h1>Kubernetes Objects</h1>
     <div style="margin-bottom: 20px;">
         <label for="context-select">Select Kubernetes Context:</label>
         <select id="context-select"></select>
+        <label for="namespace-select" style="margin-left: 20px;">Select Namespace:</label>
+        <select id="namespace-select">
+            <option value="all">All Namespaces</option>
+        </select>
     </div>
     <table id="k8s-objects">
         <tr>

@@ -7,7 +7,100 @@ let k8sApi;
 let k8sEventApi;
 
 const contextSelect = document.getElementById('context-select');
+const namespaceSelect = document.getElementById('namespace-select');
 
+
+async function populateNamespaces() {
+    try {
+        const namespaces = await k8sApi.listNamespace();
+        namespaceSelect.innerHTML = '<option value="all">All Namespaces</option>';
+        namespaces.body.items.forEach(ns => {
+            const option = document.createElement('option');
+            option.value = ns.metadata.name;
+            option.textContent = ns.metadata.name;
+            namespaceSelect.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error fetching namespaces:', error);
+    }
+}
+
+
+contextSelect.addEventListener('change', async () => {
+    updateK8sApi();
+    await populateNamespaces();
+    fetchK8sObjects();
+    fetchK8sEvents();
+});
+
+namespaceSelect.addEventListener('change', () => {
+    fetchK8sObjects();
+    fetchK8sEvents();
+});
+async function fetchK8sObjects() {
+    try {
+        const selectedNamespace = namespaceSelect.value;
+        let pods, services;
+
+        if (selectedNamespace === 'all') {
+            pods = await k8sApi.listPodForAllNamespaces();
+            services = await k8sApi.listServiceForAllNamespaces();
+        } else {
+            pods = await k8sApi.listNamespacedPod(selectedNamespace);
+            services = await k8sApi.listNamespacedService(selectedNamespace);
+        }
+
+        const objects = [
+            ...pods.body.items.map(pod => ({
+                namespace: pod.metadata.namespace,
+                kind: 'Pod',
+                name: pod.metadata.name,
+                age: new Date(pod.metadata.creationTimestamp).toLocaleString(),
+                tooltip: `
+                    Status: ${pod.status.phase}<br>
+                    IP: ${pod.status.podIP}<br>
+                    Node: ${pod.spec.nodeName}<br>
+                    Containers: ${pod.spec.containers.map(c => c.name).join(', ')}
+                `
+            })),
+            ...services.body.items.map(svc => ({
+                namespace: svc.metadata.namespace,
+                kind: 'Service',
+                name: svc.metadata.name,
+                age: new Date(svc.metadata.creationTimestamp).toLocaleString(),
+                tooltip: `
+                    Type: ${svc.spec.type}<br>
+                    Cluster IP: ${svc.spec.clusterIP}<br>
+                    Ports: ${svc.spec.ports.map(p => `${p.port}/${p.protocol}`).join(', ')}<br>
+                    Selector: ${Object.entries(svc.spec.selector || {}).map(([k, v]) => `${k}=${v}`).join(', ')}
+                `
+            }))
+        ];
+
+        updateObjectsTable(objects);
+    } catch (error) {
+        console.error('Error fetching Kubernetes objects:', error);
+        updateObjectsTable([]);
+    }
+}
+
+async function fetchK8sEvents() {
+    try {
+        const selectedNamespace = namespaceSelect.value;
+        let events;
+
+        if (selectedNamespace === 'all') {
+            events = await k8sEventApi.listEventForAllNamespaces();
+        } else {
+            events = await k8sEventApi.listNamespacedEvent(selectedNamespace);
+        }
+
+        updateEventsTable(events.body.items);
+    } catch (error) {
+        console.error('Error fetching Kubernetes events:', error);
+        updateEventsTable([]);
+    }
+}
 function populateContexts() {
     const contexts = kc.getContexts();
     contexts.forEach(context => {
@@ -83,8 +176,16 @@ function updateEventsTable(events) {
 
 async function fetchK8sObjects() {
     try {
-        const pods = await k8sApi.listPodForAllNamespaces();
-        const services = await k8sApi.listServiceForAllNamespaces();
+        const selectedNamespace = namespaceSelect.value;
+        let pods, services;
+
+        if (selectedNamespace === 'all') {
+            pods = await k8sApi.listPodForAllNamespaces();
+            services = await k8sApi.listServiceForAllNamespaces();
+        } else {
+            pods = await k8sApi.listNamespacedPod(selectedNamespace);
+            services = await k8sApi.listNamespacedService(selectedNamespace);
+        }
 
         const objects = [
             ...pods.body.items.map(pod => ({
@@ -116,24 +217,33 @@ async function fetchK8sObjects() {
         updateObjectsTable(objects);
     } catch (error) {
         console.error('Error fetching Kubernetes objects:', error);
-        updateObjectsTable([]);  // Clear the table on error
+        updateObjectsTable([]);
     }
 }
 
 async function fetchK8sEvents() {
     try {
-        const events = await k8sEventApi.listEventForAllNamespaces();
+        const selectedNamespace = namespaceSelect.value;
+        let events;
+
+        if (selectedNamespace === 'all') {
+            events = await k8sEventApi.listEventForAllNamespaces();
+        } else {
+            events = await k8sEventApi.listNamespacedEvent(selectedNamespace);
+        }
+
         updateEventsTable(events.body.items);
     } catch (error) {
         console.error('Error fetching Kubernetes events:', error);
-        updateEventsTable([]);  // Clear the table on error
+        updateEventsTable([]);
     }
 }
 
 // Populate contexts and set up initial API client
 populateContexts();
 updateK8sApi();
-
+// Initial population of namespaces
+populateNamespaces();
 // Fetch objects and events initially
 fetchK8sObjects();
 fetchK8sEvents();
