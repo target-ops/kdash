@@ -19,12 +19,12 @@ Welcome to **kdash**, a mini tool to pretty display your Kubernetes Context enti
 
 1. Clone the repository:
 ```
-    git clone https://github.com/vladir/target-ops.git
+    git clone https://github.com/target-ops/kdash.git
 ```
 
 2. Navigate to the `kdash` directory:
 ```
-    cd target-ops/kdash
+    cd kdash
 ```
 
 3. Build the project:
