@@ -72,6 +72,15 @@ const debouncedFetchK8sObjects = debounce(fetchK8sObjects, 300);
 podFilter.addEventListener('input', () => {
     debouncedFetchK8sObjects(selectedObject);
 });
+// function updateToolbarButtons() {
+//     const toolbar = document.getElementById('k8s-toolbar');
+//     if (!toolbar) return;
+
+//     Array.from(toolbar.children).forEach(button => {
+//         const objKind = k8sObjects.find(obj => obj.name === button.textContent)?.kind || 'all';
+//         button.classList.toggle('active', selectedObject === objKind);
+//     });
+// }
 function updateToolbarButtons() {
     const toolbar = document.getElementById('k8s-toolbar');
     if (!toolbar) return;
@@ -80,6 +89,7 @@ function updateToolbarButtons() {
         const objKind = k8sObjects.find(obj => obj.name === button.textContent)?.kind || 'all';
         button.classList.toggle('active', selectedObject === objKind);
     });
+    console.log('Updated toolbar buttons. Selected object:', selectedObject);
 }
 async function populateContexts() {
     const contexts = kc.getContexts();
@@ -149,7 +159,6 @@ function hideLoadingBar() {
         loadingBar.style.display = 'none';
     }
 }
-
 async function fetchK8sObjects(objectType) {
     try {
         showLoadingBar();
@@ -158,7 +167,6 @@ async function fetchK8sObjects(objectType) {
         console.log('Fetching objects. Type:', objectType, 'Namespace:', selectedNamespace);
 
         if (!objectType || objectType === 'all') {
-            // Handle 'all' case or undefined objectType
             allObjects = [];
             for (const obj of k8sObjects) {
                 if (obj.kind) {
@@ -180,9 +188,9 @@ async function fetchK8sObjects(objectType) {
         updateObjectsTable();
     }
 }
+
 async function fetchSingleObjectType(objectType, selectedNamespace) {
     if (objectType === 'all') {
-        // Return an empty array for 'all' case, as it's handled in fetchK8sObjects
         return [];
     }
 
@@ -190,9 +198,14 @@ async function fetchSingleObjectType(objectType, selectedNamespace) {
     if (!obj) throw new Error(`Unsupported object type: ${objectType}`);
     updateLoadingBar(20);
 
-    const api = obj.apiGroup ? 
-        kc.makeApiClient(k8s[`${obj.apiGroup.split('.')[0].charAt(0).toUpperCase() + obj.apiGroup.split('.')[0].slice(1)}Api`]) :
-        k8sApi;
+    let api;
+    if (obj.apiGroup === 'apps') {
+        api = kc.makeApiClient(k8s.AppsV1Api);
+    } else {
+        api = obj.apiGroup ? 
+            kc.makeApiClient(k8s[`${obj.apiGroup.split('.')[0].charAt(0).toUpperCase() + obj.apiGroup.split('.')[0].slice(1)}Api`]) :
+            k8sApi;
+    }
 
     updateLoadingBar(40);
 
@@ -213,6 +226,69 @@ async function fetchSingleObjectType(objectType, selectedNamespace) {
         tooltip: generateTooltip(item, obj.kind)
     }));
 }
+// async function fetchK8sObjects(objectType) {
+//     try {
+//         showLoadingBar();
+//         const selectedNamespace = namespaceSelect.value;
+
+//         console.log('Fetching objects. Type:', objectType, 'Namespace:', selectedNamespace);
+
+//         if (!objectType || objectType === 'all') {
+//             // Handle 'all' case or undefined objectType
+//             allObjects = [];
+//             for (const obj of k8sObjects) {
+//                 if (obj.kind) {
+//                     const objects = await fetchSingleObjectType(obj.kind, selectedNamespace);
+//                     allObjects = allObjects.concat(objects);
+//                 }
+//             }
+//         } else {
+//             allObjects = await fetchSingleObjectType(objectType, selectedNamespace);
+//         }
+
+//         updateLoadingBar(100);
+//         setTimeout(hideLoadingBar, 300);
+
+//         updateObjectsTable();
+//     } catch (error) {
+//         console.error('Error fetching Kubernetes objects:', error);
+//         hideLoadingBar();
+//         updateObjectsTable();
+//     }
+// }
+// async function fetchSingleObjectType(objectType, selectedNamespace) {
+//     if (objectType === 'all') {
+//         // Return an empty array for 'all' case, as it's handled in fetchK8sObjects
+//         return [];
+//     }
+
+//     const obj = k8sObjectsMap.get(objectType);
+//     if (!obj) throw new Error(`Unsupported object type: ${objectType}`);
+//     updateLoadingBar(20);
+
+//     const api = obj.apiGroup ? 
+//         kc.makeApiClient(k8s[`${obj.apiGroup.split('.')[0].charAt(0).toUpperCase() + obj.apiGroup.split('.')[0].slice(1)}Api`]) :
+//         k8sApi;
+
+//     updateLoadingBar(40);
+
+//     let response;
+//     if (selectedNamespace === 'all') {
+//         response = await api[`list${obj.kind}ForAllNamespaces`]();
+//     } else {
+//         response = await api[`listNamespaced${obj.kind}`](selectedNamespace);
+//     }
+
+//     updateLoadingBar(80);
+
+//     return response.body.items.map(item => ({
+//         namespace: item.metadata.namespace,
+//         kind: obj.kind,
+//         name: item.metadata.name,
+//         age: new Date(item.metadata.creationTimestamp).toLocaleString(),
+//         tooltip: generateTooltip(item, obj.kind)
+//     }));
+// }
 
 async function getContinueToken(objectType, targetPage) {
     let currentPage = 1;
@@ -280,7 +356,15 @@ function getCachedData(key) {
 function setCachedData(key, data) {
     cache.set(key, { data, timestamp: Date.now() });
 }
-
+async function showObjectYaml(obj) {
+    try {
+        const yamlContent = await getObjectYaml(obj.kind, obj.name, obj.namespace);
+        showYamlModal(yamlContent);
+    } catch (error) {
+        console.error('Error fetching YAML:', error);
+        showYamlModal(`Error fetching YAML for ${obj.kind}/${obj.name}: ${error.message}`);
+    }
+}
 function updateObjectsTable() {
     const tableBody = document.querySelector('#k8s-objects tbody');
     const fragment = document.createDocumentFragment();
@@ -293,6 +377,8 @@ function updateObjectsTable() {
             <td>${obj.name} ${createTooltip(obj.tooltip)}</td>
             <td>${obj.age}</td>
         `;
+        row.style.cursor = 'pointer'; // Add this line to show a pointer cursor
+        row.addEventListener('click', () => showObjectYaml(obj)); // Add this line
         fragment.appendChild(row);
     });
 
@@ -403,19 +489,66 @@ function hideYamlModal() {
 async function getObjectYaml(kind, name, namespace) {
     try {
         let result;
-        if (kind === 'Pod') {
-            result = await k8sApi.readNamespacedPod(name, namespace);
-        } else if (kind === 'Service') {
-            result = await k8sApi.readNamespacedService(name, namespace);
-        } else {
-            throw new Error(`Unsupported kind: ${kind}`);
+        const api = k8sObjectsMap.get(kind).apiGroup ? 
+            kc.makeApiClient(k8s[`${k8sObjectsMap.get(kind).apiGroup.split('.')[0].charAt(0).toUpperCase() + k8sObjectsMap.get(kind).apiGroup.split('.')[0].slice(1)}Api`]) :
+            k8sApi;
+
+        switch (kind) {
+            case 'Pod':
+                result = await api.readNamespacedPod(name, namespace);
+                break;
+            case 'Service':
+                result = await api.readNamespacedService(name, namespace);
+                break;
+            case 'Deployment':
+                result = await api.readNamespacedDeployment(name, namespace);
+                break;
+            case 'ConfigMap':
+                result = await api.readNamespacedConfigMap(name, namespace);
+                break;
+            case 'Secret':
+                result = await api.readNamespacedSecret(name, namespace);
+                break;
+            case 'Ingress':
+                result = await api.readNamespacedIngress(name, namespace);
+                break;
+            case 'PersistentVolume':
+                result = await api.readPersistentVolume(name);
+                break;
+            case 'PersistentVolumeClaim':
+                result = await api.readNamespacedPersistentVolumeClaim(name, namespace);
+                break;
+            case 'Namespace':
+                result = await api.readNamespace(name);
+                break;
+            case 'CustomResourceDefinition':
+                result = await api.readCustomResourceDefinition(name);
+                break;
+            default:
+                throw new Error(`Unsupported kind: ${kind}`);
         }
         return yaml.dump(result.body);
     } catch (error) {
         console.error('Error fetching object YAML:', error);
-        return `Error fetching YAML for ${kind}/${name}: ${error.message}`;
+        throw error;
     }
 }
+// async function getObjectYaml(kind, name, namespace) {
+//     try {
+//         let result;
+//         if (kind === 'Pod') {
+//             result = await k8sApi.readNamespacedPod(name, namespace);
+//         } else if (kind === 'Service') {
+//             result = await k8sApi.readNamespacedService(name, namespace);
+//         } else {
+//             throw new Error(`Unsupported kind: ${kind}`);
+//         }
+//         return yaml.dump(result.body);
+//     } catch (error) {
+//         console.error('Error fetching object YAML:', error);
+//         return `Error fetching YAML for ${kind}/${name}: ${error.message}`;
+//     }
+// }
 function setupModalListeners() {
     const modal = document.getElementById('yaml-modal');
     const closeButton = document.getElementById('close-yaml-modal');
@@ -448,20 +581,40 @@ function createToolbar() {
         const button = document.createElement('button');
         button.textContent = obj.name;
         button.addEventListener('click', () => {
-            selectedObject = obj.name === 'All' ? 'all' : obj.kind;
-            console.log('Selected object:', selectedObject); // Add this line
+            selectedObject = obj.kind || 'all';
+            console.log('Selected object:', selectedObject);
             updateToolbarButtons();
-            if (selectedObject !== 'all') {
-                fetchK8sObjects(selectedObject);
-            } else {
-                allObjects = [];
-                updateObjectsTable();
-            }
+            fetchK8sObjects(selectedObject);
         });
         toolbar.appendChild(button);
     });
     updateToolbarButtons();
 }
+// function createToolbar() {
+//     const toolbar = document.getElementById('k8s-toolbar');
+//     if (!toolbar) {
+//         console.error('Toolbar element not found. Make sure the HTML is correct.');
+//         return;
+//     }
+
+//     k8sObjects.forEach(obj => {
+//         const button = document.createElement('button');
+//         button.textContent = obj.name;
+//         button.addEventListener('click', () => {
+//             selectedObject = obj.name === 'All' ? 'all' : obj.kind;
+//             console.log('Selected object:', selectedObject); // Add this line
+//             updateToolbarButtons();
+//             if (selectedObject !== 'all') {
+//                 fetchK8sObjects(selectedObject);
+//             } else {
+//                 allObjects = [];
+//                 updateObjectsTable();
+//             }
+//         });
+//         toolbar.appendChild(button);
+//     });
+//     updateToolbarButtons();
+// }
 
 namespaceSelect.addEventListener('change', async () => {
     console.log('Namespace changed. Selected object:', selectedObject);
