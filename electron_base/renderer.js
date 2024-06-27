@@ -68,7 +68,7 @@ function debounce(func, wait) {
 }
 
 const debouncedFetchK8sObjects = debounce(fetchK8sObjects, 300);
-
+document.addEventListener
 podFilter.addEventListener('input', () => {
     debouncedFetchK8sObjects(selectedObject);
 });
@@ -419,7 +419,10 @@ function updateObjectsTable() {
             <td>${obj.age}</td>
         `;
         row.style.cursor = 'pointer';
-        row.addEventListener('click', () => showObjectYaml(obj));
+        row.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showCustomContextMenu(e, obj);
+        });
         fragment.appendChild(row);
     });
 
@@ -427,6 +430,195 @@ function updateObjectsTable() {
     tableBody.appendChild(fragment);
 
     updateObjectsPagination();
+}
+function showCustomContextMenu(event, obj) {
+    const contextMenu = document.getElementById('custom-context-menu');
+    contextMenu.style.display = 'block';
+    contextMenu.style.left = `${event.clientX}px`;
+    contextMenu.style.top = `${event.clientY}px`;
+
+    const showMapOption = document.getElementById('menu-show-map');
+    const viewYamlOption = document.getElementById('menu-view-yaml');
+
+    showMapOption.onclick = () => {
+        contextMenu.style.display = 'none';
+        showObjectMap(obj);
+    };
+
+    viewYamlOption.onclick = () => {
+        contextMenu.style.display = 'none';
+        showObjectYaml(obj);
+    };
+
+    // Disable "Show Map" option for non-Pod objects
+    showMapOption.classList.toggle('disabled', obj.kind !== 'Pod');
+
+    // Close the menu when clicking outside
+    document.addEventListener('click', closeContextMenu);
+    document.addEventListener('scroll', closeContextMenu);
+
+}
+
+function closeContextMenu() {
+    document.getElementById('custom-context-menu').style.display = 'none';
+    document.removeEventListener('click', closeContextMenu);
+}
+
+function createObjectMap(container, pod, relatedObjects) {
+    const nodes = new vis.DataSet([
+        { id: 1, label: `Pod\n${pod.name}`, shape: 'box' }
+    ]);
+
+    const edges = new vis.DataSet();
+
+    let nodeId = 2;
+    for (const [relation, objects] of Object.entries(relatedObjects)) {
+        if (Array.isArray(objects)) {
+            objects.forEach(obj => {
+                nodes.add({ id: nodeId, label: `${obj.kind}\n${obj.name}`, shape: 'box' });
+                edges.add({ from: 1, to: nodeId });
+                nodeId++;
+            });
+        } else if (objects) {
+            nodes.add({ id: nodeId, label: `${objects.kind}\n${objects.name}`, shape: 'box' });
+            edges.add({ from: 1, to: nodeId });
+            nodeId++;
+        }
+    }
+
+    const data = { nodes, edges };
+    const options = {
+        layout: {
+            hierarchical: {
+                direction: 'UD',
+                sortMethod: 'directed'
+            }
+        },
+        edges: {
+            smooth: {
+                type: 'cubicBezier',
+                forceDirection: 'vertical',
+                roundness: 0.4
+            }
+        }
+    };
+
+    new vis.Network(container, data, options);
+}
+async function fetchRelatedObjects(pod) {
+    const relatedObjects = {
+        replicaSet: null,
+        deployment: null,
+        service: null,
+        configMaps: [],
+        secrets: [],
+        persistentVolumeClaims: []
+    };
+
+    try {
+        // Fetch ReplicaSet
+        const replicaSets = await k8sApi.listNamespacedReplicaSet(pod.namespace);
+        const ownerReplicaSet = replicaSets.body.items.find(rs => 
+            rs.spec.selector && rs.spec.selector.matchLabels &&
+            Object.entries(rs.spec.selector.matchLabels).every(([key, value]) => 
+                pod.labels && pod.labels[key] === value
+            )
+        );
+        if (ownerReplicaSet) {
+            relatedObjects.replicaSet = { 
+                name: ownerReplicaSet.metadata.name, 
+                kind: 'ReplicaSet' 
+            };
+
+            // Fetch Deployment
+            const deployments = await k8sApi.listNamespacedDeployment(pod.namespace);
+            const ownerDeployment = deployments.body.items.find(deploy => 
+                deploy.spec.selector && deploy.spec.selector.matchLabels &&
+                Object.entries(deploy.spec.selector.matchLabels).every(([key, value]) => 
+                    ownerReplicaSet.spec.template.metadata.labels[key] === value
+                )
+            );
+            if (ownerDeployment) {
+                relatedObjects.deployment = { 
+                    name: ownerDeployment.metadata.name, 
+                    kind: 'Deployment' 
+                };
+            }
+        }
+
+        // Fetch Service
+        const services = await k8sApi.listNamespacedService(pod.namespace);
+        const relatedService = services.body.items.find(svc => 
+            svc.spec.selector && 
+            Object.entries(svc.spec.selector).every(([key, value]) => 
+                pod.labels && pod.labels[key] === value
+            )
+        );
+        if (relatedService) {
+            relatedObjects.service = { 
+                name: relatedService.metadata.name, 
+                kind: 'Service' 
+            };
+        }
+
+        // Fetch ConfigMaps
+        if (pod.spec && pod.spec.volumes) {
+            const configMapVolumes = pod.spec.volumes.filter(vol => vol.configMap);
+            for (const vol of configMapVolumes) {
+                relatedObjects.configMaps.push({ 
+                    name: vol.configMap.name, 
+                    kind: 'ConfigMap' 
+                });
+            }
+        }
+
+        // Fetch Secrets
+        if (pod.spec && pod.spec.volumes) {
+            const secretVolumes = pod.spec.volumes.filter(vol => vol.secret);
+            for (const vol of secretVolumes) {
+                relatedObjects.secrets.push({ 
+                    name: vol.secret.secretName, 
+                    kind: 'Secret' 
+                });
+            }
+        }
+
+        // Fetch PersistentVolumeClaims
+        if (pod.spec && pod.spec.volumes) {
+            const pvcVolumes = pod.spec.volumes.filter(vol => vol.persistentVolumeClaim);
+            for (const vol of pvcVolumes) {
+                relatedObjects.persistentVolumeClaims.push({ 
+                    name: vol.persistentVolumeClaim.claimName, 
+                    kind: 'PersistentVolumeClaim' 
+                });
+            }
+        }
+
+    } catch (error) {
+        console.error('Error fetching related objects:', error);
+    }
+
+    return relatedObjects;
+}
+async function showObjectMap(obj) {
+    if (obj.kind !== 'Pod') {
+        console.log('Object map is only available for Pods');
+        return;
+    }
+
+    const modal = document.getElementById('object-map-modal');
+    const container = document.getElementById('object-map-container');
+    document.getElementById('object-map-title').textContent = `Related Objects Map for Pod: ${obj.name}`;
+
+    modal.style.display = 'block';
+
+    try {
+        const relatedObjects = await fetchRelatedObjects(obj);
+        createObjectMap(container, obj, relatedObjects);
+    } catch (error) {
+        console.error('Error creating object map:', error);
+        container.textContent = 'Error creating object map. Please try again.';
+    }
 }
 function updateEventsTable() {
     const tableBody = document.querySelector('#k8s-events tbody');
@@ -612,6 +804,18 @@ function setupModalListeners() {
     window.onclick = function(event) {
         if (event.target == modal) {
             hideYamlModal();
+        }
+    }
+    const objectMapModal = document.getElementById('object-map-modal');
+    const closeObjectMapModal = document.getElementById('close-object-map-modal');
+
+    closeObjectMapModal.onclick = function() {
+        objectMapModal.style.display = "none";
+    }
+
+    window.onclick = function(event) {
+        if (event.target == objectMapModal) {
+            objectMapModal.style.display = "none";
         }
     }
 }
