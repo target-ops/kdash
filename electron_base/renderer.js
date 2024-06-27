@@ -199,31 +199,46 @@ async function fetchSingleObjectType(objectType, selectedNamespace) {
     updateLoadingBar(20);
 
     let api;
-    if (obj.apiGroup === 'apps') {
-        api = kc.makeApiClient(k8s.AppsV1Api);
-    } else {
-        api = obj.apiGroup ? 
-            kc.makeApiClient(k8s[`${obj.apiGroup.split('.')[0].charAt(0).toUpperCase() + obj.apiGroup.split('.')[0].slice(1)}Api`]) :
-            k8sApi;
+    switch (obj.apiGroup) {
+        case 'apps':
+            api = kc.makeApiClient(k8s.AppsV1Api);
+            break;
+        case 'networking.k8s.io':
+            api = kc.makeApiClient(k8s.NetworkingV1Api);
+            break;
+        case 'apiextensions.k8s.io':
+            api = kc.makeApiClient(k8s.ApiextensionsV1Api);
+            break;
+        default:
+            api = k8sApi;
     }
 
     updateLoadingBar(40);
 
     let response;
-    if (selectedNamespace === 'all') {
-        response = await api[`list${obj.kind}ForAllNamespaces`]();
-    } else {
-        response = await api[`listNamespaced${obj.kind}`](selectedNamespace);
+    try {
+        if (obj.kind === 'PersistentVolume' || obj.kind === 'CustomResourceDefinition') {
+            // These are cluster-scoped resources, not namespaced
+            response = await api[`list${obj.kind}`]();
+        } else if (selectedNamespace === 'all') {
+            response = await api[`list${obj.kind}ForAllNamespaces`]();
+        } else {
+            response = await api[`listNamespaced${obj.kind}`](selectedNamespace);
+        }
+    } catch (error) {
+        console.error(`Error fetching ${obj.kind}:`, error);
+        throw error;
     }
 
     updateLoadingBar(80);
 
     return response.body.items.map(item => ({
-        namespace: item.metadata.namespace,
+        namespace: item.metadata.namespace || 'N/A',
         kind: obj.kind,
         name: item.metadata.name,
         age: new Date(item.metadata.creationTimestamp).toLocaleString(),
-        tooltip: generateTooltip(item, obj.kind)
+        tooltip: generateTooltip(item, obj.kind),
+        status: item.status && item.status.phase ? item.status.phase : 'Unknown' // Add this line
     }));
 }
 // async function fetchK8sObjects(objectType) {
@@ -304,14 +319,16 @@ async function getContinueToken(objectType, targetPage) {
     return continueToken;
 }
 function generateTooltip(item, kind) {
-    // Implement tooltip generation based on the kind of object
-    // This is a basic example, you may want to customize it further
-    return `
+    let tooltip = `
         Kind: ${kind}<br>
         Name: ${item.metadata.name}<br>
-        Namespace: ${item.metadata.namespace}<br>
+        Namespace: ${item.metadata.namespace || 'N/A'}<br>
         Creation Time: ${new Date(item.metadata.creationTimestamp).toLocaleString()}
     `;
+    if (kind === 'Pod' && item.status && item.status.phase) {
+        tooltip += `<br>Status: ${item.status.phase}`;
+    }
+    return tooltip;
 }
 
 async function fetchK8sEvents() {
@@ -365,20 +382,44 @@ async function showObjectYaml(obj) {
         showYamlModal(`Error fetching YAML for ${obj.kind}/${obj.name}: ${error.message}`);
     }
 }
+function getStatusDot(status) {
+    let statusClass;
+    switch (status.toLowerCase()) {
+        case 'running':
+            statusClass = 'status-running';
+            break;
+        case 'pending':
+            statusClass = 'status-pending';
+            break;
+        case 'failed':
+            statusClass = 'status-failed';
+            break;
+        case 'unknown':
+            statusClass = 'status-unknown';
+            break;
+        case 'succeeded':
+            statusClass = 'status-succeeded';
+            break;
+        default:
+            statusClass = 'status-other';
+    }
+    return `<span class="status-dot ${statusClass}" title="${status}"></span>`;
+}
 function updateObjectsTable() {
     const tableBody = document.querySelector('#k8s-objects tbody');
     const fragment = document.createDocumentFragment();
 
     allObjects.forEach(obj => {
         const row = document.createElement('tr');
+        const statusDot = obj.kind === 'Pod' ? getStatusDot(obj.status) : '';
         row.innerHTML = `
-            <td>${obj.namespace}</td>
+            <td>${obj.namespace === 'N/A' ? '-' : obj.namespace}</td>
             <td>${obj.kind}</td>
-            <td>${obj.name} ${createTooltip(obj.tooltip)}</td>
+            <td>${statusDot}${obj.name} ${createTooltip(obj.tooltip)}</td>
             <td>${obj.age}</td>
         `;
-        row.style.cursor = 'pointer'; // Add this line to show a pointer cursor
-        row.addEventListener('click', () => showObjectYaml(obj)); // Add this line
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', () => showObjectYaml(obj));
         fragment.appendChild(row);
     });
 
@@ -487,11 +528,27 @@ function hideYamlModal() {
 }
 
 async function getObjectYaml(kind, name, namespace) {
+    console.log('Getting YAML for:', kind, name, namespace);
     try {
         let result;
-        const api = k8sObjectsMap.get(kind).apiGroup ? 
-            kc.makeApiClient(k8s[`${k8sObjectsMap.get(kind).apiGroup.split('.')[0].charAt(0).toUpperCase() + k8sObjectsMap.get(kind).apiGroup.split('.')[0].slice(1)}Api`]) :
-            k8sApi;
+        let api;
+
+        const obj = k8sObjectsMap.get(kind);
+        if (!obj) throw new Error(`Unsupported kind: ${kind}`);
+
+        switch (obj.apiGroup) {
+            case 'apps':
+                api = kc.makeApiClient(k8s.AppsV1Api);
+                break;
+            case 'networking.k8s.io':
+                api = kc.makeApiClient(k8s.NetworkingV1Api);
+                break;
+            case 'apiextensions.k8s.io':
+                api = kc.makeApiClient(k8s.ApiextensionsV1Api);
+                break;
+            default:
+                api = k8sApi;
+        }
 
         switch (kind) {
             case 'Pod':
@@ -503,12 +560,6 @@ async function getObjectYaml(kind, name, namespace) {
             case 'Deployment':
                 result = await api.readNamespacedDeployment(name, namespace);
                 break;
-            case 'ConfigMap':
-                result = await api.readNamespacedConfigMap(name, namespace);
-                break;
-            case 'Secret':
-                result = await api.readNamespacedSecret(name, namespace);
-                break;
             case 'Ingress':
                 result = await api.readNamespacedIngress(name, namespace);
                 break;
@@ -518,15 +569,14 @@ async function getObjectYaml(kind, name, namespace) {
             case 'PersistentVolumeClaim':
                 result = await api.readNamespacedPersistentVolumeClaim(name, namespace);
                 break;
-            case 'Namespace':
-                result = await api.readNamespace(name);
-                break;
             case 'CustomResourceDefinition':
                 result = await api.readCustomResourceDefinition(name);
                 break;
+            // ... other cases ...
             default:
                 throw new Error(`Unsupported kind: ${kind}`);
         }
+        console.log('API result:', result);
         return yaml.dump(result.body);
     } catch (error) {
         console.error('Error fetching object YAML:', error);

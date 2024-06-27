@@ -14,7 +14,19 @@
     margin-bottom: 20px;
     display: none;
 }
-
+.status-dot {
+    height: 10px;
+    width: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+}
+.status-running { background-color: #4CAF50; }
+.status-pending { background-color: #FFC107; }
+.status-failed { background-color: #F44336; }
+.status-unknown { background-color: #F44336; }
+.status-succeeded { background-color: #9E9E9E; }
+.status-other { background-color: #9E9E9E; }
 .loading-bar-progress {
     width: 0%;
     height: 100%;
