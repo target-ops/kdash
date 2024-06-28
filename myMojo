@@ -1,0 +1,111 @@
+# KDash Documentation
+
+## Overview
+
+KDash is a Kubernetes dashboard application that provides a user-friendly interface for monitoring and managing Kubernetes clusters. It allows users to view and interact with various Kubernetes objects, events, and related information.
+
+## Features
+
+- Context and namespace selection
+- Dynamic object filtering
+- Pagination for Kubernetes objects and events
+- YAML viewing for Kubernetes objects
+- Object relationship mapping
+- Real-time updates (every 5 seconds)
+
+## Components
+
+### HTML Structure
+
+The application uses a single HTML file with the following main sections:
+
+- Header with application title
+- Control panel for context and namespace selection
+- Kubernetes objects table
+- Kubernetes events table
+- Modals for YAML viewing and object mapping
+
+### JavaScript (renderer.js)
+
+The main logic of the application is contained in `renderer.js`. Here's an overview of its key components:
+
+#### Global Variables and Constants
+
+- `k8s`: Kubernetes client library
+- `kc`: KubeConfig object for managing cluster configurations
+- `k8sApi` and `k8sEventApi`: API clients for Kubernetes operations
+- `ITEMS_PER_PAGE`: Constant for pagination (set to 10)
+- `k8sObjects`: Array of supported Kubernetes object types
+
+#### Main Functions
+
+1. `init()`: Initializes the application, populates contexts and namespaces, and sets up event listeners.
+
+2. `populateContexts()`: Populates the context dropdown with available Kubernetes contexts.
+
+3. `populateNamespaces()`: Populates the namespace dropdown with available namespaces.
+
+4. `updateK8sApi()`: Updates the Kubernetes API client based on the selected context.
+
+5. `fetchK8sObjects(objectType)`: Fetches Kubernetes objects based on the selected type and namespace.
+
+6. `fetchK8sEvents()`: Fetches Kubernetes events for the selected namespace.
+
+7. `updateObjectsTable()` and `updateEventsTable()`: Update the respective tables with fetched data.
+
+8. `showObjectYaml(obj)`: Displays the YAML representation of a Kubernetes object.
+
+9. `showObjectMap(obj)`: Displays a visual map of related objects for a given Kubernetes object.
+
+10. `createToolbar()`: Creates the toolbar with buttons for different Kubernetes object types.
+
+#### Helper Functions
+
+- `debounce(func, wait)`: Implements debouncing for input events.
+- `createTooltip(content)`: Creates tooltip HTML for additional information.
+- `getStatusDot(status)`: Generates a status indicator dot based on object status.
+- `updateLoadingBar(progress)`: Updates the loading bar progress.
+
+#### Event Listeners
+
+The application sets up various event listeners for user interactions, including:
+
+- Context and namespace selection changes
+- Pagination controls
+- Toolbar button clicks
+- Object filtering
+
+## Usage
+
+1. Select a Kubernetes context from the dropdown.
+2. Choose a namespace or select "All Namespaces".
+3. Use the toolbar to filter by object type.
+4. Use the search input to filter objects by name.
+5. Click on objects to view their YAML or show related object maps.
+6. Use pagination controls to navigate through large datasets.
+
+## Styling
+
+The application uses a dark theme with a responsive design. Key style elements include:
+
+- Color scheme: Dark background (#1e2124) with light text (#ffffff)
+- Accent color: #3498db (used for buttons and highlights)
+- Responsive tables with hover effects
+- Modal dialogs for YAML viewing and object mapping
+- Custom context menu for additional object actions
+
+## Dependencies
+
+- Kubernetes JavaScript client (@kubernetes/client-node)
+- Vis.js for network visualization
+- js-yaml for YAML processing
+
+## Future Improvements
+
+- Implement user authentication and authorization
+- Add support for editing and applying Kubernetes configurations
+- Implement log viewing for pods
+- Enhance error handling and user feedback
+- Add unit and integration tests
+
+This documentation provides an overview of the KDash application structure, key components, and usage. It can be expanded with more detailed API references, setup instructions, and troubleshooting guides as needed.

@@ -42,7 +42,7 @@
   },
   "build": {
     "appId": "com.target-ops.kdash",
-    "productName": "target-ops K8s Live Viewer",
+    "productName": "kdash",
     "mac": {
       "category": "public.app-category.developer-tools"
     },
