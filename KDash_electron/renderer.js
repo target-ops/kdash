@@ -432,10 +432,20 @@ function updateObjectsTable() {
     updateObjectsPagination();
 }
 function showCustomContextMenu(event, obj) {
+    event.preventDefault();
     const contextMenu = document.getElementById('custom-context-menu');
+    
+    // Calculate the position considering scroll offset
+    const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+    const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+    
+    const x = event.clientX + scrollX;
+    const y = event.clientY + scrollY;
+
+    // Set the position of the context menu
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
     contextMenu.style.display = 'block';
-    contextMenu.style.left = `${event.clientX}px`;
-    contextMenu.style.top = `${event.clientY}px`;
 
     const showMapOption = document.getElementById('menu-show-map');
     const viewYamlOption = document.getElementById('menu-view-yaml');
@@ -456,8 +466,34 @@ function showCustomContextMenu(event, obj) {
     // Close the menu when clicking outside
     document.addEventListener('click', closeContextMenu);
     document.addEventListener('scroll', closeContextMenu);
-
 }
+// function showCustomContextMenu(event, obj) {
+//     const contextMenu = document.getElementById('custom-context-menu');
+//     contextMenu.style.display = 'block';
+//     contextMenu.style.left = `${event.clientX}px`;
+//     contextMenu.style.top = `${event.clientY}px`;
+
+//     const showMapOption = document.getElementById('menu-show-map');
+//     const viewYamlOption = document.getElementById('menu-view-yaml');
+
+//     showMapOption.onclick = () => {
+//         contextMenu.style.display = 'none';
+//         showObjectMap(obj);
+//     };
+
+//     viewYamlOption.onclick = () => {
+//         contextMenu.style.display = 'none';
+//         showObjectYaml(obj);
+//     };
+
+//     // Disable "Show Map" option for non-Pod objects
+//     showMapOption.classList.toggle('disabled', obj.kind !== 'Pod');
+
+//     // Close the menu when clicking outside
+//     document.addEventListener('click', closeContextMenu);
+//     document.addEventListener('scroll', closeContextMenu);
+
+// }
 
 function closeContextMenu() {
     document.getElementById('custom-context-menu').style.display = 'none';
@@ -505,6 +541,47 @@ function createObjectMap(container, pod, relatedObjects) {
 
     new vis.Network(container, data, options);
 }
+// function createObjectMap(container, pod, relatedObjects) {
+//     const nodes = new vis.DataSet([
+//         { id: 1, label: `Pod\n${pod.name}`, shape: 'box' }
+//     ]);
+
+//     const edges = new vis.DataSet();
+
+//     let nodeId = 2;
+//     for (const [relation, objects] of Object.entries(relatedObjects)) {
+//         if (Array.isArray(objects)) {
+//             objects.forEach(obj => {
+//                 nodes.add({ id: nodeId, label: `${obj.kind}\n${obj.name}`, shape: 'box' });
+//                 edges.add({ from: 1, to: nodeId });
+//                 nodeId++;
+//             });
+//         } else if (objects) {
+//             nodes.add({ id: nodeId, label: `${objects.kind}\n${objects.name}`, shape: 'box' });
+//             edges.add({ from: 1, to: nodeId });
+//             nodeId++;
+//         }
+//     }
+
+//     const data = { nodes, edges };
+//     const options = {
+//         layout: {
+//             hierarchical: {
+//                 direction: 'UD',
+//                 sortMethod: 'directed'
+//             }
+//         },
+//         edges: {
+//             smooth: {
+//                 type: 'cubicBezier',
+//                 forceDirection: 'vertical',
+//                 roundness: 0.4
+//             }
+//         }
+//     };
+
+//     new vis.Network(container, data, options);
+// }
 async function fetchRelatedObjects(pod) {
     const relatedObjects = {
         replicaSet: null,
@@ -516,14 +593,15 @@ async function fetchRelatedObjects(pod) {
     };
 
     try {
+        const appsV1Api = kc.makeApiClient(k8s.AppsV1Api);
+
         // Fetch ReplicaSet
-        const replicaSets = await k8sApi.listNamespacedReplicaSet(pod.namespace);
+        const replicaSets = await appsV1Api.listNamespacedReplicaSet(pod.metadata.namespace);
         const ownerReplicaSet = replicaSets.body.items.find(rs => 
-            rs.spec.selector && rs.spec.selector.matchLabels &&
-            Object.entries(rs.spec.selector.matchLabels).every(([key, value]) => 
-                pod.labels && pod.labels[key] === value
-            )
+            rs.metadata.ownerReferences &&
+            rs.metadata.ownerReferences.some(ref => ref.kind === 'Deployment' && ref.name === pod.metadata.ownerReferences[0]?.name)
         );
+
         if (ownerReplicaSet) {
             relatedObjects.replicaSet = { 
                 name: ownerReplicaSet.metadata.name, 
@@ -531,13 +609,11 @@ async function fetchRelatedObjects(pod) {
             };
 
             // Fetch Deployment
-            const deployments = await k8sApi.listNamespacedDeployment(pod.namespace);
+            const deployments = await appsV1Api.listNamespacedDeployment(pod.metadata.namespace);
             const ownerDeployment = deployments.body.items.find(deploy => 
-                deploy.spec.selector && deploy.spec.selector.matchLabels &&
-                Object.entries(deploy.spec.selector.matchLabels).every(([key, value]) => 
-                    ownerReplicaSet.spec.template.metadata.labels[key] === value
-                )
+                deploy.metadata.name === ownerReplicaSet.metadata.ownerReferences[0]?.name
             );
+
             if (ownerDeployment) {
                 relatedObjects.deployment = { 
                     name: ownerDeployment.metadata.name, 
@@ -547,11 +623,11 @@ async function fetchRelatedObjects(pod) {
         }
 
         // Fetch Service
-        const services = await k8sApi.listNamespacedService(pod.namespace);
+        const services = await k8sApi.listNamespacedService(pod.metadata.namespace);
         const relatedService = services.body.items.find(svc => 
             svc.spec.selector && 
             Object.entries(svc.spec.selector).every(([key, value]) => 
-                pod.labels && pod.labels[key] === value
+                pod.metadata.labels && pod.metadata.labels[key] === value
             )
         );
         if (relatedService) {
@@ -613,13 +689,37 @@ async function showObjectMap(obj) {
     modal.style.display = 'block';
 
     try {
-        const relatedObjects = await fetchRelatedObjects(obj);
+        // Fetch the full Pod object
+        const podResponse = await k8sApi.readNamespacedPod(obj.name, obj.namespace);
+        const podObject = podResponse.body;
+
+        const relatedObjects = await fetchRelatedObjects(podObject);
         createObjectMap(container, obj, relatedObjects);
     } catch (error) {
         console.error('Error creating object map:', error);
         container.textContent = 'Error creating object map. Please try again.';
     }
 }
+// async function showObjectMap(obj) {
+//     if (obj.kind !== 'Pod') {
+//         console.log('Object map is only available for Pods');
+//         return;
+//     }
+
+//     const modal = document.getElementById('object-map-modal');
+//     const container = document.getElementById('object-map-container');
+//     document.getElementById('object-map-title').textContent = `Related Objects Map for Pod: ${obj.name}`;
+
+//     modal.style.display = 'block';
+
+//     try {
+//         const relatedObjects = await fetchRelatedObjects(obj);
+//         createObjectMap(container, obj, relatedObjects);
+//     } catch (error) {
+//         console.error('Error creating object map:', error);
+//         container.textContent = 'Error creating object map. Please try again.';
+//     }
+// }
 function updateEventsTable() {
     const tableBody = document.querySelector('#k8s-events tbody');
     tableBody.innerHTML = '';
@@ -718,7 +818,6 @@ function hideYamlModal() {
     const modal = document.getElementById('yaml-modal');
     modal.style.display = "none";
 }
-
 async function getObjectYaml(kind, name, namespace) {
     console.log('Getting YAML for:', kind, name, namespace);
     try {
@@ -752,6 +851,12 @@ async function getObjectYaml(kind, name, namespace) {
             case 'Deployment':
                 result = await api.readNamespacedDeployment(name, namespace);
                 break;
+            case 'ConfigMap':
+                result = await api.readNamespacedConfigMap(name, namespace);
+                break;
+            case 'Secret':
+                result = await api.readNamespacedSecret(name, namespace);
+                break;
             case 'Ingress':
                 result = await api.readNamespacedIngress(name, namespace);
                 break;
@@ -764,7 +869,9 @@ async function getObjectYaml(kind, name, namespace) {
             case 'CustomResourceDefinition':
                 result = await api.readCustomResourceDefinition(name);
                 break;
-            // ... other cases ...
+            case 'Namespace':
+                result = await api.readNamespace(name);
+                break;
             default:
                 throw new Error(`Unsupported kind: ${kind}`);
         }
@@ -775,6 +882,62 @@ async function getObjectYaml(kind, name, namespace) {
         throw error;
     }
 }
+// async function getObjectYaml(kind, name, namespace) {
+//     console.log('Getting YAML for:', kind, name, namespace);
+//     try {
+//         let result;
+//         let api;
+
+//         const obj = k8sObjectsMap.get(kind);
+//         if (!obj) throw new Error(`Unsupported kind: ${kind}`);
+
+//         switch (obj.apiGroup) {
+//             case 'apps':
+//                 api = kc.makeApiClient(k8s.AppsV1Api);
+//                 break;
+//             case 'networking.k8s.io':
+//                 api = kc.makeApiClient(k8s.NetworkingV1Api);
+//                 break;
+//             case 'apiextensions.k8s.io':
+//                 api = kc.makeApiClient(k8s.ApiextensionsV1Api);
+//                 break;
+//             default:
+//                 api = k8sApi;
+//         }
+
+//         switch (kind) {
+//             case 'Pod':
+//                 result = await api.readNamespacedPod(name, namespace);
+//                 break;
+//             case 'Service':
+//                 result = await api.readNamespacedService(name, namespace);
+//                 break;
+//             case 'Deployment':
+//                 result = await api.readNamespacedDeployment(name, namespace);
+//                 break;
+//             case 'Ingress':
+//                 result = await api.readNamespacedIngress(name, namespace);
+//                 break;
+//             case 'PersistentVolume':
+//                 result = await api.readPersistentVolume(name);
+//                 break;
+//             case 'PersistentVolumeClaim':
+//                 result = await api.readNamespacedPersistentVolumeClaim(name, namespace);
+//                 break;
+//             case 'CustomResourceDefinition':
+//                 result = await api.readCustomResourceDefinition(name);
+//                 break;
+//             // ... other cases ...
+//             default:
+//                 throw new Error(`Unsupported kind: ${kind}`);
+//         }
+//         console.log('API result:', result);
+//         return yaml.dump(result.body);
+//     } catch (error) {
+//         console.error('Error fetching object YAML:', error);
+//         throw error;
+//     }
+// }
 // async function getObjectYaml(kind, name, namespace) {
 //     try {
 //         let result;

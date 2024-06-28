@@ -1,5 +1,5 @@
 {
-  "name": "KDash",
+  "name": "kdash",
   "version": "0.3.0",
   "description": "a minitool to show k8s live status",
   "main": "main.js",
@@ -10,26 +10,26 @@
     "dist": "electron-builder"
   },
   "dmg": {
-      "background": "build/background.png",
-      "icon": "build/icon.icns",
-      "iconSize": 100,
-      "contents": [
-        {
-          "x": 130,
-          "y": 220
-        },
-        {
-          "x": 410,
-          "y": 220,
-          "type": "link",
-          "path": "/Applications"
-        }
-      ],
-      "window": {
-        "width": 540,
-        "height": 380
+    "background": "build/background.png",
+    "icon": "build/icon.icns",
+    "iconSize": 100,
+    "contents": [
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
       }
-    },
+    ],
+    "window": {
+      "width": 540,
+      "height": 380
+    }
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -37,6 +37,7 @@
     "@kubernetes/client-node": "^0.21.0"
   },
   "devDependencies": {
+    "electron": "^31.1.0",
     "electron-builder": "^24.13.3"
   },
   "build": {
