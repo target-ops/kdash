@@ -70,6 +70,7 @@ function debounce(func, wait) {
 const debouncedFetchK8sObjects = debounce(fetchK8sObjects, 300);
 document.addEventListener
 podFilter.addEventListener('input', () => {
+    currentObjectsPage = 1; // Reset to first page when filtering
     debouncedFetchK8sObjects(selectedObject);
 });
 // function updateToolbarButtons() {
@@ -181,6 +182,7 @@ async function fetchK8sObjects(objectType) {
         updateLoadingBar(100);
         setTimeout(hideLoadingBar, 300);
 
+        currentObjectsPage = 1; // Reset to first page
         updateObjectsTable();
     } catch (error) {
         console.error('Error fetching Kubernetes objects:', error);
@@ -188,6 +190,35 @@ async function fetchK8sObjects(objectType) {
         updateObjectsTable();
     }
 }
+// async function fetchK8sObjects(objectType) {
+//     try {
+//         showLoadingBar();
+//         const selectedNamespace = namespaceSelect.value;
+
+//         console.log('Fetching objects. Type:', objectType, 'Namespace:', selectedNamespace);
+
+//         if (!objectType || objectType === 'all') {
+//             allObjects = [];
+//             for (const obj of k8sObjects) {
+//                 if (obj.kind) {
+//                     const objects = await fetchSingleObjectType(obj.kind, selectedNamespace);
+//                     allObjects = allObjects.concat(objects);
+//                 }
+//             }
+//         } else {
+//             allObjects = await fetchSingleObjectType(objectType, selectedNamespace);
+//         }
+
+//         updateLoadingBar(100);
+//         setTimeout(hideLoadingBar, 300);
+
+//         updateObjectsTable();
+//     } catch (error) {
+//         console.error('Error fetching Kubernetes objects:', error);
+//         hideLoadingBar();
+//         updateObjectsTable();
+//     }
+// }
 
 async function fetchSingleObjectType(objectType, selectedNamespace) {
     if (objectType === 'all') {
@@ -409,7 +440,11 @@ function updateObjectsTable() {
     const tableBody = document.querySelector('#k8s-objects tbody');
     const fragment = document.createDocumentFragment();
 
-    allObjects.forEach(obj => {
+    const startIndex = (currentObjectsPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    const paginatedObjects = allObjects.slice(startIndex, endIndex);
+
+    paginatedObjects.forEach(obj => {
         const row = document.createElement('tr');
         const statusDot = obj.kind === 'Pod' ? getStatusDot(obj.status) : '';
         row.innerHTML = `
@@ -431,6 +466,32 @@ function updateObjectsTable() {
 
     updateObjectsPagination();
 }
+// function updateObjectsTable() {
+//     const tableBody = document.querySelector('#k8s-objects tbody');
+//     const fragment = document.createDocumentFragment();
+
+//     allObjects.forEach(obj => {
+//         const row = document.createElement('tr');
+//         const statusDot = obj.kind === 'Pod' ? getStatusDot(obj.status) : '';
+//         row.innerHTML = `
+//             <td>${obj.namespace === 'N/A' ? '-' : obj.namespace}</td>
+//             <td>${obj.kind}</td>
+//             <td>${statusDot}${obj.name} ${createTooltip(obj.tooltip)}</td>
+//             <td>${obj.age}</td>
+//         `;
+//         row.style.cursor = 'pointer';
+//         row.addEventListener('contextmenu', (e) => {
+//             e.preventDefault();
+//             showCustomContextMenu(e, obj);
+//         });
+//         fragment.appendChild(row);
+//     });
+
+//     tableBody.innerHTML = '';
+//     tableBody.appendChild(fragment);
+
+//     updateObjectsPagination();
+// }
 function showCustomContextMenu(event, obj) {
     event.preventDefault();
     const contextMenu = document.getElementById('custom-context-menu');
@@ -747,6 +808,12 @@ function updateObjectsPagination() {
     document.getElementById('objects-prev-page').disabled = currentObjectsPage === 1;
     document.getElementById('objects-next-page').disabled = currentObjectsPage === totalPages;
 }
+// function updateObjectsPagination() {
+//     const totalPages = Math.ceil(allObjects.length / ITEMS_PER_PAGE);
+//     document.getElementById('objects-page-info').textContent = `Page ${currentObjectsPage} of ${totalPages}`;
+//     document.getElementById('objects-prev-page').disabled = currentObjectsPage === 1;
+//     document.getElementById('objects-next-page').disabled = currentObjectsPage === totalPages;
+// }
 
 function updateEventsPagination() {
     const totalPages = Math.ceil(allEvents.length / ITEMS_PER_PAGE);
@@ -785,11 +852,25 @@ document.getElementById('objects-prev-page').addEventListener('click', () => {
 });
 
 document.getElementById('objects-next-page').addEventListener('click', () => {
-    if (currentObjectsPage < Math.ceil(allObjects.length / ITEMS_PER_PAGE)) {
+    const totalPages = Math.ceil(allObjects.length / ITEMS_PER_PAGE);
+    if (currentObjectsPage < totalPages) {
         currentObjectsPage++;
         updateObjectsTable();
     }
 });
+// document.getElementById('objects-prev-page').addEventListener('click', () => {
+//     if (currentObjectsPage > 1) {
+//         currentObjectsPage--;
+//         updateObjectsTable();
+//     }
+// });
+
+// document.getElementById('objects-next-page').addEventListener('click', () => {
+//     if (currentObjectsPage < Math.ceil(allObjects.length / ITEMS_PER_PAGE)) {
+//         currentObjectsPage++;
+//         updateObjectsTable();
+//     }
+// });
 
 document.getElementById('events-prev-page').addEventListener('click', () => {
     if (currentEventsPage > 1) {
